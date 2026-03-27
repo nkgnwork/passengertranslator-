@@ -269,7 +269,7 @@ body:not(.g-mode) .guest{display:none!important}
     <input type="password" id="keyInput" placeholder="sk-ant-...">
     <div class="note">Se guarda solo en este navegador.</div>
     <label>Velocidad de voz</label>
-    <input type="range" id="speedInput" min="0.6" max="2.2" step="0.1" value="1.2" style="accent-color:var(--gold)">
+    <input type="range" id="speedInput" min="0.6" max="2.2" step="0.1" value="1.4" style="accent-color:var(--gold)">
     <div class="note" id="speedLabel">1.2x</div>
     <label>Tiempo para reposo (segundos)</label>
     <input type="number" id="idleInput" min="30" max="600" value="60" style="max-width:100px">
@@ -282,17 +282,11 @@ body:not(.g-mode) .guest{display:none!important}
 
 <script>
 /*══════════════════════════════════════════════════
-  HLV TRADUCTOR v8 — PRODUCTION
+  HLV TRADUCTOR v9 — STATE MACHINE ARCHITECTURE
   
-  FLOW:
-  1. Continuous listening — mic auto-restarts after TTS ends
-  2. Auto voice selection per target language
-  3. Idle screensaver after configurable timeout
-  4. Dual screen sync via BroadcastChannel
-  
-  SETUP:
-  Reception: open URL
-  Passenger: open URL?screen=guest
+  KEY FIX: Mic and speaker NEVER overlap.
+  STATES: IDLE → LISTENING → PROCESSING → SPEAKING → COOLDOWN → LISTENING
+  Using continuous=false — one phrase per session.
 ══════════════════════════════════════════════════*/
 
 const LL=[
@@ -312,13 +306,60 @@ const QUICKS={
 const isG=new URLSearchParams(location.search).get('screen')==='guest';
 let key=localStorage.getItem('hlv_k')||'';
 let lang=LL[0], mode='r';
-let rec=null, listening=false, continuous=true;
 let ch=null, idleT=null;
 let speed=parseFloat(localStorage.getItem('hlv_sp')||'1.2');
 let idleSec=parseInt(localStorage.getItem('hlv_idle')||'60');
 let voiceCache={};
 
-// ── INIT ──
+// ═══ STATE MACHINE ═══
+let STATE='idle';
+let autoMode=true;
+let rec=null;
+
+function setState(s){
+  STATE=s;
+  const dot=document.getElementById('dot');
+  const label=document.getElementById('dotLabel');
+  const mic=document.getElementById('micBtn');
+  const bar=document.getElementById('statusBar');
+  const hint=document.getElementById('inputHint');
+  if(!dot)return;
+  dot.style.animation='none';
+  switch(s){
+    case 'idle':
+      dot.style.background='var(--green)';dot.style.boxShadow='0 0 4px var(--green)';
+      label.textContent='Listo';mic.classList.remove('on');
+      bar.className='status-bar hidden';
+      if(hint)hint.textContent=mode==='r'?'🏨 Español':''+lang.f+' '+lang.n;
+      break;
+    case 'listening':
+      dot.style.background='var(--red)';dot.style.boxShadow='0 0 8px var(--red)';
+      dot.style.animation='blink 1s infinite';
+      label.textContent='Escuchando…';mic.classList.add('on');
+      bar.className='status-bar listening';
+      bar.textContent='🎤 '+(mode==='r'?'Escuchando español… hable ahora':'Listening for '+lang.n+'…');
+      if(hint)hint.textContent=mode==='r'?'🎤 Escuchando español…':'🎤 Listening…';
+      break;
+    case 'processing':
+      dot.style.background='var(--gold)';dot.style.boxShadow='0 0 4px var(--gold)';
+      label.textContent='Traduciendo…';mic.classList.remove('on');
+      bar.className='status-bar translating';bar.textContent='⏳ Traduciendo…';
+      break;
+    case 'speaking':
+      dot.style.background='var(--copper)';dot.style.boxShadow='0 0 6px var(--copper)';
+      dot.style.animation='blink 1s infinite';
+      label.textContent='Hablando…';mic.classList.remove('on');
+      bar.className='status-bar translating';bar.textContent='🔊 Reproduciendo…';
+      break;
+    case 'cooldown':
+      dot.style.background='var(--gold)';dot.style.boxShadow='';
+      label.textContent='…';mic.classList.remove('on');
+      bar.className='status-bar hidden';
+      break;
+  }
+}
+
+// ═══ INIT ═══
 document.addEventListener('DOMContentLoaded',()=>{
   initSync();
   if(isG){
@@ -331,21 +372,19 @@ document.addEventListener('DOMContentLoaded',()=>{
     bindInput();
     cacheVoices();
     if(!key) setTimeout(openSettings,400);
-    else startContinuous();
+    else { autoMode=true; beginListening(); }
   }
   resetIdleTimer();
   startSlides(document.getElementById('idleSlides'));
-  // Activity listeners
   ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{resetIdleTimer();wakeFromIdle();}));
 });
 
-// ── SYNC ──
+// ═══ SYNC ═══
 function initSync(){
   try{
     ch=new BroadcastChannel('hlv');
     ch.onmessage=e=>{
       if(isG&&e.data.t==='msg') showGuestMsg(e.data);
-      if(isG&&e.data.t==='idle') showGuestIdle();
     };
   }catch(e){
     window.addEventListener('storage',ev=>{
@@ -355,173 +394,159 @@ function initSync(){
 }
 function sync(d){try{if(ch)ch.postMessage(d);}catch(e){}localStorage.setItem('hlv_s',JSON.stringify({...d,_:Date.now()}));}
 
-// ── SLIDESHOW ──
-function startSlides(container){
-  const slides=container.querySelectorAll('.idle-slide:not(.idle-dim)');
-  if(slides.length<2)return;
+// ═══ SLIDESHOW ═══
+function startSlides(c){
+  if(!c)return;
+  const s=c.querySelectorAll('.idle-slide:not(.idle-dim)');
+  if(s.length<2)return;
   let i=0;
-  setInterval(()=>{slides[i].classList.remove('on');i=(i+1)%slides.length;slides[i].classList.add('on');},7000);
+  setInterval(()=>{s[i].classList.remove('on');i=(i+1)%s.length;s[i].classList.add('on');},7000);
 }
 
-// ── IDLE SCREENSAVER ──
-function resetIdleTimer(){
-  clearTimeout(idleT);
-  idleT=setTimeout(goIdle,idleSec*1000);
+// ═══ IDLE SCREENSAVER ═══
+function resetIdleTimer(){clearTimeout(idleT);idleT=setTimeout(goIdle,idleSec*1000);}
+function goIdle(){
+  killMic();speechSynthesis.cancel();setState('idle');
+  document.getElementById('idle').classList.add('on');
 }
-function goIdle(){document.getElementById('idle').classList.add('on');}
 function wakeFromIdle(){
   const el=document.getElementById('idle');
   if(el.classList.contains('on')){
-    el.classList.remove('on');
-    resetIdleTimer();
-    // Restart continuous listening on wake
-    if(!isG&&continuous&&key) setTimeout(startListening,500);
+    el.classList.remove('on');resetIdleTimer();
+    if(!isG&&autoMode&&key) setTimeout(beginListening,500);
   }
 }
 
-// ── LANGUAGES ──
+// ═══ LANGUAGES ═══
 function buildLangs(){
   document.getElementById('langRow').innerHTML=LL.map((l,i)=>
-    `<button class="lang-pill${i===0?' on':''}" onclick="pickLang(${i})">${l.f} ${l.n}</button>`
+    '<button class="lang-pill'+(i===0?' on':'')+'" onclick="pickLang('+i+')">'+l.f+' '+l.n+'</button>'
   ).join('');
 }
 function pickLang(i){
   lang=LL[i];
   document.querySelectorAll('.lang-pill').forEach((b,j)=>b.classList.toggle('on',j===i));
-  updateHint();
+  if(STATE==='listening'){killMic();setTimeout(beginListening,300);}
 }
 
-// ── MODE ──
+// ═══ MODE ═══
 function setMode(m){
   mode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-  updateHint();
   buildQuicks();
-}
-function updateHint(){
-  const h=document.getElementById('inputHint');
-  const f=document.getElementById('txtInput');
-  if(mode==='r'){h.textContent='🏨 Español · Escucha continua';f.placeholder='Escriba en español…';}
-  else{h.textContent=`${lang.f} ${lang.n} · Continuous listen`;f.placeholder=`Type in ${lang.n}…`;}
+  if(STATE==='listening'){killMic();setTimeout(beginListening,300);}
 }
 
-// ── QUICK SUGGESTIONS ──
+// ═══ QUICK SUGGESTIONS ═══
 function buildQuicks(){
   const row=document.getElementById('quickRow');
   if(!row)return;
   row.innerHTML=(QUICKS[mode]||QUICKS.r).map(q=>
-    `<button class="quick-btn" onclick="useQuick(this)">${q}</button>`
+    '<button class="quick-btn" onclick="useQuick(this)">'+q+'</button>'
   ).join('');
 }
 function useQuick(btn){
+  killMic();
   document.getElementById('txtInput').value=btn.textContent;
   document.getElementById('sendBtn').disabled=false;
   send();
 }
 
-// ── INPUT ──
+// ═══ INPUT ═══
 function bindInput(){
   const f=document.getElementById('txtInput'),b=document.getElementById('sendBtn');
   f.addEventListener('input',()=>b.disabled=!f.value.trim());
   f.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+  f.addEventListener('focus',()=>{if(STATE==='listening')killMic();});
 }
 
 // ══════════════════════════════════
-// CONTINUOUS LISTENING
-// Auto-restarts mic after TTS ends
+// MIC — One phrase per session
+// continuous=false for stability
 // ══════════════════════════════════
-function startContinuous(){
-  continuous=true;
-  startListening();
-}
-
-function startListening(){
-  if(listening||!continuous)return;
-  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){toast('Usa Chrome para micrófono');return;}
-  
+function beginListening(){
+  if(STATE==='speaking'||STATE==='processing'||STATE==='cooldown')return;
+  if(!key)return;
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Usa Chrome para micrófono');return;}
+  killMic();
   rec=new SR();
-  rec.continuous=true;
+  rec.continuous=false;
   rec.interimResults=true;
   rec.lang=mode==='r'?'es-CL':lang.s;
+  rec.maxAlternatives=1;
 
-  rec.onstart=()=>{
-    listening=true;
-    setDot('listening','Escuchando…');
-    document.getElementById('micBtn').classList.add('on');
-    setStatus('listening','🎤 '+(mode==='r'?'Escuchando español…':'Listening for '+lang.n+'…'));
-  };
+  rec.onstart=()=>setState('listening');
 
-  let finalText='';
   rec.onresult=e=>{
-    let fin='',interim='';
+    let finalText='',interimText='';
     for(let i=0;i<e.results.length;i++){
-      if(e.results[i].isFinal) fin+=e.results[i][0].transcript;
-      else interim+=e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalText+=e.results[i][0].transcript;
+      else interimText+=e.results[i][0].transcript;
     }
-    if(fin&&fin!==finalText){
-      finalText=fin;
-      document.getElementById('txtInput').value=fin;
+    const field=document.getElementById('txtInput');
+    if(finalText){
+      field.value=finalText;
       document.getElementById('sendBtn').disabled=false;
-      // Stop recognition, send, then restart after TTS
-      stopListening();
-      send();
-    } else if(interim){
-      document.getElementById('txtInput').value=interim;
+    } else if(interimText){
+      field.value=interimText;
+      document.getElementById('sendBtn').disabled=!interimText.trim();
     }
     resetIdleTimer();
   };
 
   rec.onerror=e=>{
-    if(e.error==='not-allowed'){toast('Permiso de micrófono denegado. Revisa el navegador.');continuous=false;}
-    else if(e.error==='no-speech'||e.error==='aborted'){/* normal timeout */}
-    stopListening();
-    // Auto restart if continuous
-    if(continuous) setTimeout(startListening,800);
-  };
-
-  rec.onend=()=>{
-    stopListening();
-    // Auto restart if continuous and not mid-translation
-    if(continuous&&!document.getElementById('statusBar').classList.contains('translating')){
-      setTimeout(startListening,600);
+    if(e.error==='not-allowed'){
+      toast('Permiso de micrófono denegado');
+      autoMode=false;setState('idle');return;
     }
   };
 
-  try{rec.start();}catch(e){setTimeout(startListening,1000);}
+  rec.onend=()=>{
+    const text=document.getElementById('txtInput').value.trim();
+    if(text&&STATE==='listening'){
+      send();
+    } else if(autoMode&&STATE!=='speaking'&&STATE!=='processing'&&STATE!=='cooldown'){
+      setState('idle');
+      setTimeout(beginListening,400);
+    } else {
+      setState('idle');
+    }
+  };
+
+  try{rec.start();}catch(e){setTimeout(beginListening,500);}
 }
 
-function stopListening(){
-  listening=false;
-  try{if(rec)rec.stop();}catch(e){}
-  document.getElementById('micBtn').classList.remove('on');
-  setDot('on','Listo');
-  setStatus('hidden','');
+function killMic(){
+  try{if(rec){rec.onend=null;rec.onerror=null;rec.onresult=null;rec.abort();}}catch(e){}
+  rec=null;
+  if(STATE==='listening')setState('idle');
 }
 
 function toggleMic(){
-  if(listening){continuous=false;stopListening();toast('Escucha pausada');}
-  else{continuous=true;startListening();toast('Escucha continua activada');}
+  if(STATE==='speaking'){
+    speechSynthesis.cancel();setState('idle');
+    autoMode=true;setTimeout(beginListening,300);
+    toast('TTS detenido');
+  } else if(STATE==='listening'){
+    autoMode=false;killMic();setState('idle');
+    toast('Escucha pausada');
+  } else {
+    autoMode=true;beginListening();
+    toast('Escucha activada');
+  }
 }
 
-// ── STATUS ──
-function setDot(cls,label){
-  document.getElementById('dot').className='tb-dot '+cls;
-  document.getElementById('dotLabel').textContent=label;
-}
-function setStatus(cls,text){
-  const el=document.getElementById('statusBar');
-  el.className='status-bar '+cls;
-  el.textContent=text;
-}
-
-// ── SEND & TRANSLATE ──
+// ══════════════════════════════════
+// SEND & TRANSLATE
+// ══════════════════════════════════
 async function send(){
   const f=document.getElementById('txtInput'),text=f.value.trim();
   if(!text)return;
   if(!key){openSettings();toast('Ingrese API Key');return;}
+  killMic();speechSynthesis.cancel();
   f.value='';document.getElementById('sendBtn').disabled=true;
-  resetIdleTimer();
+  setState('processing');resetIdleTimer();
 
   const fromL=mode==='r'?'Español':lang.n;
   const toL=mode==='r'?lang.n:'Español';
@@ -530,22 +555,15 @@ async function send(){
   const who=mode==='r'?'r':'g';
 
   addMsg(who,text);
-  setDot('on','Traduciendo…');
-  setStatus('translating','Traduciendo…');
-
   try{
     const tr=await translate(text,fromL,toL);
     finishMsg(tr);
-    setStatus('hidden','');
-    // Speak and restart listening when done
-    speakAndResume(tr,toC);
     sync({t:'msg',who:who==='r'?'RECEPCIÓN':'HUÉSPED',src:text,dst:tr,fromL,toL,fromC,toC});
+    speakThenListen(tr,toC);
   }catch(err){
-    setStatus('hidden','');
-    setDot('on','Error');
+    setState('idle');
     toast(err.message||'Error de traducción');
-    // Resume listening after error
-    if(continuous) setTimeout(startListening,1500);
+    if(autoMode) setTimeout(beginListening,1500);
   }
 }
 
@@ -555,8 +573,8 @@ async function translate(text,from,to){
     headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',max_tokens:300,
-      system:'Translator for Hotel Las Vicuñas, boutique hotel in Putre, Chile (Altiplano, 3500m). Translate naturally with hospitality warmth. Reply ONLY with the translation.',
-      messages:[{role:'user',content:`Translate from ${from} to ${to}:\n\n${text}`}]
+      system:'Translator for Hotel Las Vicuñas, boutique hotel in Putre, Chile (Altiplano, 3500m). Translate naturally with hospitality warmth. Reply ONLY with the translation, no quotes or explanations.',
+      messages:[{role:'user',content:'Translate from '+from+' to '+to+':\n\n'+text}]
     })
   });
   if(!r.ok){
@@ -567,15 +585,13 @@ async function translate(text,from,to){
   return(await r.json()).content[0].text.trim();
 }
 
-// ── CHAT ──
+// ═══ CHAT ═══
 function addMsg(who,text){
   const chat=document.getElementById('chat');
   const empty=document.getElementById('chatEmpty');
   if(empty)empty.remove();
   const d=document.createElement('div');d.className='msg msg-'+who;
-  d.innerHTML=`<div class="msg-label">${who==='r'?'🏨 RECEPCIÓN':'🧳 HUÉSPED'}</div>
-    <div class="msg-box"><div class="msg-src">${esc(text)}</div>
-    <div class="msg-dst" id="pendingDst">…</div></div>`;
+  d.innerHTML='<div class="msg-label">'+(who==='r'?'🏨 RECEPCIÓN':'🧳 HUÉSPED')+'</div><div class="msg-box"><div class="msg-src">'+esc(text)+'</div><div class="msg-dst" id="pendingDst">…</div></div>';
   chat.appendChild(d);chat.scrollTop=chat.scrollHeight;
 }
 function finishMsg(tr){
@@ -585,19 +601,19 @@ function finishMsg(tr){
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
 // ══════════════════════════════════
-// SPEECH — AUTO VOICE PER LANGUAGE
+// TTS — Speak then listen
+// Mic OFF during entire playback
+// 1s cooldown after TTS to kill echo
 // ══════════════════════════════════
 function cacheVoices(){
   const load=()=>{
     const voices=speechSynthesis.getVoices();
     if(!voices.length)return;
-    // For each language, pick the best voice
     ['es','en','fr','de','pt','ja','zh','ko'].forEach(code=>{
       const matches=voices.filter(v=>v.lang.startsWith(code));
       if(!matches.length)return;
-      // Prefer online (not localService) > Google > Microsoft > others
-      const online=matches.filter(v=>!v.localService);
       const google=matches.filter(v=>/google/i.test(v.name));
+      const online=matches.filter(v=>!v.localService);
       const ms=matches.filter(v=>/microsoft/i.test(v.name));
       voiceCache[code]=google[0]||online[0]||ms[0]||matches[0];
     });
@@ -606,70 +622,67 @@ function cacheVoices(){
   speechSynthesis.onvoiceschanged=load;
 }
 
-function speakAndResume(text,langCode){
-  if(!('speechSynthesis' in window)){if(continuous)setTimeout(startListening,500);return;}
+function speakThenListen(text,langCode){
+  if(!('speechSynthesis' in window)){setState('idle');if(autoMode)setTimeout(beginListening,300);return;}
+  setState('speaking');
   speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);
-  u.rate=speed;
-  u.pitch=1;
-  // Auto-select best voice for this language
+  u.rate=speed;u.pitch=1;
   if(voiceCache[langCode])u.voice=voiceCache[langCode];
   u.lang=langCode;
+
+  // Safety timeout for Chrome TTS hang bug
+  const safety=setTimeout(()=>{
+    if(STATE==='speaking'){speechSynthesis.cancel();setState('idle');if(autoMode)beginListening();}
+  },Math.max(text.length*150,10000));
+
   u.onend=()=>{
-    setDot('on','Listo');
-    // Resume continuous listening after TTS finishes
-    if(continuous) setTimeout(startListening,400);
+    clearTimeout(safety);
+    setState('cooldown');
+    // 1 second cooldown — let echo/reverb die before restarting mic
+    setTimeout(()=>{setState('idle');if(autoMode)beginListening();},1000);
   };
   u.onerror=()=>{
-    if(continuous) setTimeout(startListening,400);
+    clearTimeout(safety);
+    setState('idle');if(autoMode)setTimeout(beginListening,500);
   };
   speechSynthesis.speak(u);
 }
 
 function reSpeak(el){
   const text=el.parentElement.textContent.replace('🔊','').trim();
-  const code=mode==='r'?lang.c:'es';
-  if(!('speechSynthesis' in window))return;
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);
-  u.rate=speed;
-  if(voiceCache[code])u.voice=voiceCache[code];
-  u.lang=code;
-  speechSynthesis.speak(u);
+  killMic();
+  speakThenListen(text,mode==='r'?lang.c:'es');
 }
 
-// ── GUEST SCREEN ──
+// ═══ GUEST SCREEN ═══
 function showGuestMsg(d){
   document.getElementById('guestIdle').style.display='none';
-  const live=document.getElementById('guestLive');live.classList.add('on');
+  document.getElementById('guestLive').classList.add('on');
   document.getElementById('glWho').textContent=d.who;
   document.getElementById('glSrc').textContent=d.src;
   document.getElementById('glDst').textContent=d.dst;
   document.getElementById('glLang').textContent=d.fromL+' → '+d.toL;
-  // History
   const log=document.getElementById('guestLog');log.classList.add('on');
   const item=document.createElement('div');item.className='guest-log-item';
   item.innerHTML='<em>'+esc(d.src)+'</em> → '+esc(d.dst);
   log.insertBefore(item,log.firstChild);
-  // Speak on guest screen
   if('speechSynthesis' in window){
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(d.dst);u.lang=d.toC;u.rate=speed;
     const v=speechSynthesis.getVoices().find(v=>v.lang.startsWith(d.toC));
-    if(v)u.voice=v;
-    speechSynthesis.speak(u);
+    if(v)u.voice=v;speechSynthesis.speak(u);
   }
-  // Back to idle after 25s
-  clearTimeout(idleT);
-  idleT=setTimeout(showGuestIdle,25000);
+  clearTimeout(idleT);idleT=setTimeout(showGuestIdle,25000);
 }
 function showGuestIdle(){
   document.getElementById('guestIdle').style.display='';
   document.getElementById('guestLive').classList.remove('on');
 }
 
-// ── SETTINGS ──
+// ═══ SETTINGS ═══
 function openSettings(){
+  killMic();
   document.getElementById('modalBg').classList.add('on');
   document.getElementById('keyInput').value=key;
   document.getElementById('speedInput').value=speed;
@@ -684,14 +697,13 @@ function saveSettings(){
   key=k;localStorage.setItem('hlv_k',k);
   speed=parseFloat(document.getElementById('speedInput').value);localStorage.setItem('hlv_sp',speed);
   idleSec=parseInt(document.getElementById('idleInput').value)||60;localStorage.setItem('hlv_idle',idleSec);
-  closeSettings();toast('✓ Guardado');
-  resetIdleTimer();
-  if(continuous&&!listening) startListening();
+  closeSettings();toast('✓ Guardado');resetIdleTimer();
+  autoMode=true;beginListening();
 }
 function clearAll(){
   if(!confirm('¿Borrar todo?'))return;
   ['hlv_k','hlv_sp','hlv_idle','hlv_s'].forEach(k=>localStorage.removeItem(k));
-  continuous=false;stopListening();location.reload();
+  killMic();speechSynthesis.cancel();location.reload();
 }
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),3000);}
 </script>
