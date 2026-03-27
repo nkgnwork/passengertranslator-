@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d0805">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Traductor — Hotel Las Vicuñas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:#0d0805;--earth:#1a0e06;--brown:#6b3a1f;--warm:#9c5c2a;--copper:#b8712e;
+  --gold:#c8943a;--sand:#e8c87a;--cream:#faf4e8;
+  --fog:rgba(250,244,232,0.05);--glass:rgba(250,244,232,0.08);--glass2:rgba(250,244,232,0.12);
+  --rim:rgba(200,148,58,0.2);--rim2:rgba(200,148,58,0.35);
+  --ga:#7ab892;--gabg:rgba(122,184,146,0.08);--gab:rgba(122,184,146,0.18);
+  --danger:#c94a3a;--ok:#4caf50;--radius:14px;
+  --fd:'Cormorant Garamond',Georgia,serif;--fu:'Outfit',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden;font-family:var(--fu);background:var(--ink);color:var(--cream);-webkit-font-smoothing:antialiased}
+button{font-family:var(--fu);cursor:pointer;border:none;background:none;color:var(--cream)}
+input{font-family:var(--fu);outline:none;color:var(--cream)}
+::selection{background:var(--gold);color:var(--ink)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--rim);border-radius:3px}
+
+.bg{position:fixed;inset:0;z-index:0;overflow:hidden}
+.bg::before{content:'';position:absolute;inset:0;background:
+  radial-gradient(ellipse 100% 50% at 50% 0%,rgba(156,92,42,0.12),transparent 60%),
+  radial-gradient(ellipse 60% 40% at 80% 20%,rgba(200,148,58,0.06),transparent 50%),
+  radial-gradient(ellipse 50% 50% at 15% 70%,rgba(107,58,31,0.08),transparent 50%),var(--ink)}
+.bg-mtn{position:absolute;bottom:0;left:0;right:0;height:35vh;opacity:0.04}
+.bg-mtn svg{width:100%;height:100%;display:block}
+.bg-stars{position:absolute;inset:0;opacity:0.25}
+.star{position:absolute;width:1px;height:1px;background:var(--cream);border-radius:50%;animation:twinkle var(--dur,4s) ease-in-out infinite var(--del,0s)}
+@keyframes twinkle{0%,100%{opacity:0.15}50%{opacity:0.75}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:0.9}50%{transform:scale(1.02);opacity:1}}
+@keyframes wave-bar{0%,100%{height:5px}50%{height:18px}}
+@keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(200,148,58,0.08)}50%{box-shadow:0 0 40px rgba(200,148,58,0.18)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity 0.5s;z-index:1}
+.screen.active{opacity:1;pointer-events:all}
+
+/* Setup */
+#s-setup{align-items:center;justify-content:center;padding:2rem}
+.setup-card{background:var(--glass);border:1px solid var(--rim);border-radius:var(--radius);padding:1.6rem;width:min(88%,360px);display:flex;flex-direction:column;gap:0.7rem;animation:fadeUp 0.5s ease}
+.setup-card h2{font-family:var(--fd);font-size:1.2rem;font-weight:400;text-align:center}
+.setup-card p{font-size:0.75rem;color:rgba(250,244,232,0.4);text-align:center;line-height:1.5}
+.slbl{font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);font-weight:500}
+.sinp{background:rgba(0,0,0,0.35);border:1px solid var(--rim);border-radius:10px;padding:0.75rem 0.9rem;font-size:0.88rem;width:100%;transition:border-color 0.3s}
+.sinp:focus{border-color:var(--gold)}
+.sinp::placeholder{color:rgba(250,244,232,0.18)}
+.serr{color:var(--danger);font-size:0.72rem;display:none;text-align:center}
+.serr.show{display:block}
+.bgold{background:linear-gradient(135deg,var(--gold),var(--copper));color:var(--ink);font-weight:600;font-size:0.88rem;padding:0.75rem 1.5rem;border-radius:10px;transition:all 0.3s;width:100%}
+.bgold:hover{transform:translateY(-1px);box-shadow:0 5px 20px rgba(200,148,58,0.25)}
+
+/* Main */
+#s-main{gap:0}
+.mh{display:flex;align-items:center;justify-content:space-between;padding:0.55rem 1rem;border-bottom:1px solid var(--rim);flex-shrink:0;background:rgba(13,8,5,0.85);backdrop-filter:blur(20px);z-index:10}
+.mh-brand{display:flex;align-items:center;gap:0.6rem}
+.mh-vic{width:26px;height:26px;opacity:0.65}
+.mh-txt{display:flex;flex-direction:column}
+.mh-h{font-family:var(--fu);font-size:0.48rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);font-weight:600;line-height:1}
+.mh-n{font-family:var(--fd);font-size:1rem;font-weight:400;letter-spacing:0.02em;line-height:1.2}
+.mh-r{display:flex;align-items:center;gap:0.5rem}
+.mh-lang{font-size:0.78rem;color:var(--sand);opacity:0.75}
+.bgear{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:0.95rem;background:var(--fog);border:1px solid rgba(250,244,232,0.05);transition:all 0.2s}
+.bgear:hover{background:var(--glass);border-color:var(--rim)}
+
+/* Status indicator */
+.status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.status-dot.ok{background:var(--ok);box-shadow:0 0 6px rgba(76,175,80,0.5)}
+.status-dot.err{background:var(--danger);box-shadow:0 0 6px rgba(201,74,58,0.5)}
+.status-dot.loading{background:var(--gold);animation:pulse 1s infinite}
+
+.lbar{display:flex;gap:0.35rem;padding:0.45rem 0.7rem;border-bottom:1px solid rgba(200,148,58,0.06);flex-shrink:0;background:rgba(13,8,5,0.4);overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none}
+.lbar::-webkit-scrollbar{display:none}
+.lbtn{padding:0.3rem 0.6rem;border-radius:7px;font-size:0.76rem;color:rgba(250,244,232,0.4);border:1px solid transparent;transition:all 0.25s;white-space:nowrap;flex-shrink:0}
+.lbtn:hover{color:var(--cream);background:var(--fog)}
+.lbtn.on{color:var(--gold);background:rgba(200,148,58,0.1);border-color:rgba(200,148,58,0.15);font-weight:500}
+
+.mbar{display:flex;gap:0.35rem;padding:0.35rem 0.7rem;flex-shrink:0;background:rgba(13,8,5,0.25)}
+.modebtn{flex:1;padding:0.45rem;border-radius:8px;font-size:0.76rem;color:rgba(250,244,232,0.35);border:1px solid transparent;transition:all 0.25s;text-align:center}
+.modebtn:hover{color:var(--cream)}
+.modebtn.ar{color:var(--cream);background:rgba(200,148,58,0.1);border-color:var(--rim);font-weight:500}
+.modebtn.ag{color:var(--ga);background:var(--gabg);border-color:var(--gab);font-weight:500}
+
+.spot{flex-shrink:0;min-height:85px;padding:0.9rem 1.1rem;border-bottom:1px solid rgba(200,148,58,0.06);position:relative}
+.spot::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(200,148,58,0.02),transparent);pointer-events:none}
+.se{display:flex;align-items:center;justify-content:center;min-height:65px;color:rgba(250,244,232,0.18);font-size:0.82rem;font-style:italic;gap:0.4rem}
+.se .ico{font-size:1.2rem;opacity:0.4}
+.sc{display:none;position:relative;z-index:1}
+.sl{font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);font-weight:500;display:flex;align-items:center;gap:0.3rem;margin-bottom:0.35rem}
+.st{font-family:var(--fd);font-size:clamp(1.25rem,3.2vw,1.9rem);font-weight:400;line-height:1.3;animation:fadeUp 0.3s ease}
+.sa{display:flex;gap:0.4rem;margin-top:0.45rem}
+.bspk{padding:0.3rem 0.8rem;border-radius:7px;font-size:0.72rem;color:var(--gold);border:1px solid var(--rim);background:var(--fog);transition:all 0.2s}
+.bspk:hover{background:var(--glass);border-color:var(--rim2)}
+.bcpy{padding:0.3rem 0.65rem;border-radius:7px;font-size:0.72rem;color:rgba(250,244,232,0.35);border:1px solid rgba(250,244,232,0.05);transition:all 0.2s}
+.bcpy:hover{color:var(--cream);border-color:var(--rim)}
+
+.ca{flex:1;overflow-y:auto;padding:0.6rem 0.9rem;display:flex;flex-direction:column;gap:0.45rem}
+.ce{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.35rem;color:rgba(250,244,232,0.12)}
+.ce .ico{font-size:1.6rem;opacity:0.4}
+.ce p{font-size:0.75rem}
+.msg{animation:slideIn 0.3s ease}
+.msgfrom{font-size:0.58rem;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:0.12rem;padding-left:0.35rem;font-weight:600}
+.msgfrom.r{color:var(--gold)}.msgfrom.g{color:var(--ga)}
+.msgbub{padding:0.55rem 0.85rem;border-radius:11px;font-size:0.83rem;line-height:1.5;max-width:88%}
+.msgbub.r{background:rgba(200,148,58,0.07);border:1px solid rgba(200,148,58,0.08);border-bottom-left-radius:3px}
+.msgbub.g{background:var(--gabg);border:1px solid rgba(122,184,146,0.08);border-bottom-left-radius:3px}
+.msgorig{color:var(--cream)}
+.msgtrans{color:rgba(250,244,232,0.4);font-size:0.74rem;margin-top:0.2rem;padding-top:0.2rem;border-top:1px solid rgba(250,244,232,0.03);font-style:italic}
+
+.ia{flex-shrink:0;padding:0.45rem 0.9rem 0.6rem;border-top:1px solid var(--rim);background:rgba(13,8,5,0.85);backdrop-filter:blur(20px)}
+.iw{font-size:0.62rem;color:rgba(250,244,232,0.3);margin-bottom:0.3rem;text-align:center;letter-spacing:0.04em}
+.ir{display:flex;gap:0.4rem;align-items:center}
+.bmic{width:40px;height:40px;border-radius:50%;background:var(--fog);border:1.5px solid var(--rim);display:flex;align-items:center;justify-content:center;font-size:1.15rem;transition:all 0.3s;flex-shrink:0}
+.bmic:hover{background:var(--glass);border-color:var(--gold)}
+.bmic.rec{background:rgba(201,74,58,0.12);border-color:var(--danger);animation:pulse 1.2s infinite}
+.ifl{flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(250,244,232,0.06);border-radius:9px;padding:0.6rem 0.85rem;font-size:0.86rem;transition:border-color 0.3s}
+.ifl:focus{border-color:var(--gold)}
+.ifl::placeholder{color:rgba(250,244,232,0.15)}
+.bsnd{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--copper));display:flex;align-items:center;justify-content:center;font-size:1.05rem;transition:all 0.3s;flex-shrink:0;color:var(--ink)}
+.bsnd:disabled{opacity:0.2;cursor:not-allowed}
+.bsnd:not(:disabled):hover{transform:scale(1.06);box-shadow:0 4px 14px rgba(200,148,58,0.2)}
+.wb{display:none;align-items:center;justify-content:center;gap:3px;padding:0.3rem 0;margin-top:0.15rem}
+.wb.on{display:flex}
+.wbr{width:3px;background:var(--gold);border-radius:2px;animation:wave-bar 0.6s ease-in-out infinite}
+.wbr:nth-child(1){animation-delay:0s;height:5px}.wbr:nth-child(2){animation-delay:.1s;height:10px}.wbr:nth-child(3){animation-delay:.2s;height:16px}.wbr:nth-child(4){animation-delay:.1s;height:10px}.wbr:nth-child(5){animation-delay:0s;height:5px}
+.wl{display:none;text-align:center;font-size:0.65rem;color:var(--danger);font-weight:500;letter-spacing:0.06em;animation:pulse 1.5s ease infinite}
+.wl.on{display:block}
+.ti{display:none;text-align:center;padding:0.35rem;font-size:0.72rem;color:var(--gold);letter-spacing:0.05em}
+.ti.on{display:block}
+.td::after{content:'';animation:dots 1.5s steps(4,end) infinite}
+
+/* Banner de error persistente */
+.banner{display:none;padding:0.5rem 0.9rem;font-size:0.72rem;text-align:center;flex-shrink:0;font-weight:500;letter-spacing:0.03em}
+.banner.err{display:block;background:rgba(201,74,58,0.15);color:#f08070;border-bottom:1px solid rgba(201,74,58,0.2)}
+.banner.ok{display:block;background:rgba(76,175,80,0.1);color:var(--ok);border-bottom:1px solid rgba(76,175,80,0.15)}
+
+/* Guest screen */
+body.gs .mbar,body.gs .ca,body.gs .ia,body.gs .lbar,body.gs .ti,body.gs .banner{display:none!important}
+body.gs .spot{flex:1;min-height:unset;align-items:center;justify-content:center;border:none;padding:3rem}
+body.gs .st{font-size:clamp(2rem,6vw,4.5rem);text-align:center;line-height:1.15}
+body.gs .sl{font-size:0.9rem;justify-content:center;margin-bottom:0.8rem}
+body.gs .bspk{padding:0.6rem 1.6rem;font-size:0.9rem}
+body.gs .sa{justify-content:center;margin-top:1.2rem}
+body.gs .mh{padding:0.8rem 1.6rem}
+body.gs .mh-n{font-size:1.25rem}
+body.gs .bgear{display:none}
+
+.gi{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:3rem;text-align:center;position:relative;overflow:hidden}
+body.gs .gi.on{display:flex}
+.gi-deco{position:absolute;bottom:-5%;left:0;right:0;height:28%;opacity:0.03;pointer-events:none}
+.gi-deco svg{width:100%;height:100%;display:block}
+.gi-h{font-family:var(--fu);font-size:clamp(0.65rem,1.6vw,0.9rem);letter-spacing:0.45em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:0.25rem;animation:fadeUp 0.7s ease both}
+.gi-bar{width:50px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:0.35rem 0;animation:fadeUp 0.7s ease 0.1s both}
+.gi-name{font-family:var(--fd);font-size:clamp(2.5rem,8vw,5rem);font-weight:300;color:var(--cream);line-height:1.05;animation:breathe 7s ease infinite;margin-bottom:0.2rem}
+.gi-bar2{width:35px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:0.25rem 0;animation:fadeUp 0.7s ease 0.2s both}
+.gi-loc{font-size:clamp(0.55rem,1.3vw,0.72rem);color:rgba(250,244,232,0.3);letter-spacing:0.15em;text-transform:uppercase;margin-top:0.25rem;animation:fadeUp 0.7s ease 0.3s both}
+.gi-wel{font-family:var(--fd);font-size:clamp(0.9rem,2.5vw,1.35rem);color:rgba(250,244,232,0.3);font-weight:300;font-style:italic;margin-top:1.8rem;line-height:1.6;animation:fadeUp 0.7s ease 0.4s both}
+.gi-phone{margin-top:2.2rem;display:flex;align-items:center;gap:0.6rem;padding:0.75rem 1.6rem;border:1px solid var(--rim);border-radius:11px;background:var(--fog);animation:fadeUp 0.7s ease 0.5s both,glow 5s ease infinite}
+.gi-phone-i{font-size:1.2em}
+.gi-phone-n{font-family:var(--fu);font-size:clamp(0.95rem,2.8vw,1.4rem);color:var(--sand);font-weight:500;letter-spacing:0.05em}
+.gi-flags{display:flex;flex-wrap:wrap;gap:0.7rem;justify-content:center;margin-top:1.8rem;animation:fadeUp 0.7s ease 0.6s both}
+.gi-fl{font-size:clamp(1.3rem,3vw,2rem);opacity:0.3;transition:opacity 0.3s,transform 0.3s}
+
+/* Modal */
+.modalbg{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center}
+.modalbg.on{display:flex}
+.modal{background:rgba(13,8,5,0.97);border:1px solid var(--rim);border-radius:var(--radius);padding:1.5rem;width:min(90%,360px);display:flex;flex-direction:column;gap:0.8rem;animation:fadeUp 0.3s ease}
+.modal h3{font-family:var(--fd);font-size:1.15rem;font-weight:400}
+.mx{align-self:flex-end;font-size:1.2rem;color:rgba(250,244,232,0.3);transition:color 0.2s}
+.mx:hover{color:var(--cream)}
+.bdng{background:rgba(201,74,58,0.1);color:var(--danger);border:1px solid rgba(201,74,58,0.2);border-radius:8px;padding:0.5rem 0.9rem;font-size:0.75rem;transition:all 0.2s;width:100%}
+.bdng:hover{background:rgba(201,74,58,0.18)}
+
+#toast{position:fixed;top:0.8rem;left:50%;transform:translateX(-50%);background:rgba(13,8,5,0.95);border:1px solid var(--rim);border-radius:9px;padding:0.6rem 1rem;font-size:0.78rem;z-index:999;opacity:0;pointer-events:none;transition:opacity 0.3s;backdrop-filter:blur(12px);max-width:85%;text-align:center}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="bg"><div class="bg-stars" id="bgs"></div><div class="bg-mtn"><svg viewBox="0 0 1440 320" preserveAspectRatio="none" fill="rgba(250,244,232,1)"><path d="M0,320 L0,280 Q60,200 120,240 Q180,160 240,200 Q280,140 340,180 Q400,100 460,160 Q500,120 560,150 Q620,80 680,140 Q720,100 780,130 Q840,60 920,120 Q960,90 1020,110 Q1080,50 1160,100 Q1200,70 1260,90 Q1320,40 1380,80 Q1410,60 1440,70 L1440,320Z"/></svg></div></div>
+
+<!-- SETUP (fallback if no key at all) -->
+<div class="screen" id="s-setup">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:2rem">
+    <div class="setup-card">
+      <h2>Traductor Las Vicuñas</h2>
+      <p>Ingresa tu API Key de Anthropic para activar.</p>
+      <label class="slbl">API Key</label>
+      <input class="sinp" id="akIn" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
+      <div class="serr" id="sErr"></div>
+      <button class="bgold" onclick="saveKey()">Activar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN TRANSLATOR -->
+<div class="screen" id="s-main">
+  <div class="mh">
+    <div class="mh-brand">
+      <svg class="mh-vic" viewBox="0 0 40 40" fill="none"><path d="M12 32Q10 26 11 21Q12 16 15 13Q17 11 18 10L18 7L19.5 7L19.5 10Q22 10 23 13Q25 17 24 23Q23 28 21 32Z" fill="var(--gold)" opacity=".65"/><path d="M18 7Q18 4 19 3.5Q20 3 20 4.5L20 7Z" fill="var(--gold)" opacity=".45"/><circle cx="17" cy="12" r=".55" fill="var(--cream)" opacity=".7"/></svg>
+      <div class="mh-txt"><div class="mh-h">Hotel</div><div class="mh-n">Las Vicuñas</div></div>
+    </div>
+    <div class="mh-r">
+      <div class="status-dot loading" id="statusDot" title="Verificando conexión..."></div>
+      <span class="mh-lang" id="hL">English</span>
+      <button class="bgear" onclick="openSettings()" title="Configuración">&#x2699;&#xFE0F;</button>
+    </div>
+  </div>
+
+  <!-- Banner de estado -->
+  <div class="banner" id="banner"></div>
+
+  <div class="lbar" id="lBar"></div>
+
+  <div class="mbar">
+    <button class="modebtn ar" id="mR" onclick="setMode('r')">&#x1F3E8; Recepción &#x2192; Huésped</button>
+    <button class="modebtn" id="mG" onclick="setMode('g')">&#x1F9F3; Huésped &#x2192; Recepción</button>
+  </div>
+
+  <div class="spot" id="spot">
+    <div class="se" id="sE"><span class="ico">&#x1F310;</span> Habla o escribe para traducir&#x2026;</div>
+    <div class="sc" id="sC">
+      <div class="sl" id="sL">&#x2192;</div>
+      <div class="st" id="sT"></div>
+      <div class="sa">
+        <button class="bspk" onclick="replay()">&#x1F50A; Reproducir</button>
+        <button class="bcpy" onclick="copyTranslation()">&#x1F4CB; Copiar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Guest idle screen -->
+  <div class="gi" id="gI">
+    <div class="gi-deco"><svg viewBox="0 0 1440 320" preserveAspectRatio="none" fill="rgba(250,244,232,1)"><path d="M0,320L0,260Q100,180 200,220Q300,120 400,180Q500,80 600,140Q700,60 800,120Q900,50 1000,100Q1100,40 1200,80Q1300,30 1440,60L1440,320Z"/></svg></div>
+    <div class="gi-h">Hotel</div>
+    <div class="gi-bar"></div>
+    <div class="gi-name">Las Vicuñas</div>
+    <div class="gi-bar2"></div>
+    <div class="gi-loc">Baquedano 80 &#xB7; Putre &#xB7; Altiplano &#xB7; 3.500 m</div>
+    <div class="gi-wel">Bienvenido &#xB7; Welcome &#xB7; Bienvenue<br>Willkommen &#xB7; Bem-vindo</div>
+    <div class="gi-phone"><span class="gi-phone-i">&#x1F4DE;</span><span class="gi-phone-n">+56 9 5381 1481</span></div>
+    <div class="gi-flags" id="gF"></div>
+  </div>
+
+  <div class="ca" id="cA">
+    <div class="ce" id="cE"><div class="ico">&#x1F4AC;</div><p>La conversación aparecerá aquí</p></div>
+  </div>
+
+  <div class="ti" id="tI">Traduciendo<span class="td"></span></div>
+
+  <div class="ia" id="iA">
+    <div class="iw" id="iW">&#x1F3E8; Hablando en Español</div>
+    <div class="ir">
+      <button class="bmic" id="bM" onclick="toggleMic()">&#x1F3A4;</button>
+      <input class="ifl" id="iF" type="text" placeholder="Escriba en español&#x2026;" autocomplete="off">
+      <button class="bsnd" id="bS" disabled>&#x27A4;</button>
+    </div>
+    <div class="wb" id="wB"><span class="wbr"></span><span class="wbr"></span><span class="wbr"></span><span class="wbr"></span><span class="wbr"></span></div>
+    <div class="wl" id="wL">Escuchando&#x2026;</div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modalbg" id="sModal">
+  <div class="modal">
+    <button class="mx" onclick="closeSettings()">&#x2715;</button>
+    <h3>Configuración</h3>
+    <div><label class="slbl">API Key de Anthropic</label><input class="sinp" id="sK" type="password"></div>
+    <button class="bgold" onclick="updateKey()">Guardar Key</button>
+    <button class="bdng" onclick="clearAll()">&#x1F5D1; Borrar datos y reiniciar</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   HOTEL LAS VICUÑAS — TRADUCTOR v5.0
+   ALL BUGS FIXED — PRODUCTION READY
+   
+   Requisitos:
+   - Chrome (para micrófono/voz)
+   - HTTPS (GitHub Pages) — NO funciona como file://
+   - Internet (para API de Anthropic + Google Fonts)
+   - NO necesita Supabase
+═══════════════════════════════════════════════════════ */
+
+// ── Embedded API Key + Version ──
+var EMBEDDED_KEY = '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';
+var APP_VERSION = 'v5';
+
+var LANGS = [
+  {c:'en',f:'\u{1F1EC}\u{1F1E7}',l:'English',s:'en-US'},
+  {c:'fr',f:'\u{1F1EB}\u{1F1F7}',l:'Français',s:'fr-FR'},
+  {c:'de',f:'\u{1F1E9}\u{1F1EA}',l:'Deutsch',s:'de-DE'},
+  {c:'pt',f:'\u{1F1E7}\u{1F1F7}',l:'Português',s:'pt-BR'},
+  {c:'ja',f:'\u{1F1EF}\u{1F1F5}',l:'\u65E5\u672C\u8A9E',s:'ja-JP'},
+  {c:'zh',f:'\u{1F1E8}\u{1F1F3}',l:'\u4E2D\u6587',s:'zh-CN'},
+  {c:'ko',f:'\u{1F1F0}\u{1F1F7}',l:'\uD55C\uAD6D\uC5B4',s:'ko-KR'}
+];
+
+var isGuest = (new URLSearchParams(window.location.search)).get('screen') === 'guest';
+var apiKey = '';
+var guestLang = LANGS[0];
+var mode = 'r';
+var recognition = null;
+var isListening = false;
+var lastTranslation = {text:'', lang:'', label:''};
+
+// ── Utility functions ──
+function getEl(id) { return document.getElementById(id); }
+function showScreen(id) {
+  var screens = document.querySelectorAll('.screen');
+  for (var i = 0; i < screens.length; i++) screens[i].classList.remove('active');
+  getEl(id).classList.add('active');
+}
+function toast(msg, dur) {
+  dur = dur || 2500;
+  var t = getEl('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, dur);
+}
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function scrollChat() {
+  var area = getEl('cA');
+  area.scrollTop = area.scrollHeight;
+}
+
+// ── FIX BUG #1 & #2: Smart key initialization ──
+// Clears ALL legacy localStorage keys, then ensures current embedded key is used
+function initApiKey() {
+  // Clean up ALL legacy key names from previous versions
+  try {
+    localStorage.removeItem('hlv_apikey');  // v1
+    localStorage.removeItem('hlv_key');     // v2
+  } catch(e) {}
+
+  var storedKey = '';
+  try { storedKey = localStorage.getItem('hlv_k') || ''; } catch(e) {}
+  var storedVersion = '';
+  try { storedVersion = localStorage.getItem('hlv_v') || ''; } catch(e) {}
+
+  // If version changed OR no key stored → force embedded key
+  if (storedVersion !== APP_VERSION || !storedKey) {
+    apiKey = EMBEDDED_KEY;
+    try {
+      localStorage.setItem('hlv_k', EMBEDDED_KEY);
+      localStorage.setItem('hlv_v', APP_VERSION);
+    } catch(e) {}
+    console.log('[HLV] Key inicializada desde embedded (version ' + APP_VERSION + ')');
+  } else {
+    // Same version, user might have manually changed key via settings
+    apiKey = storedKey;
+    console.log('[HLV] Key cargada desde localStorage');
+  }
+  return apiKey;
+}
+
+// ── FIX BUG #5: Startup connection test ──
+function testConnection() {
+  var dot = getEl('statusDot');
+  var banner = getEl('banner');
+  if (!dot) return;
+  
+  dot.className = 'status-dot loading';
+  dot.title = 'Verificando...';
+
+  // Check if running from file://
+  if (window.location.protocol === 'file:') {
+    dot.className = 'status-dot err';
+    dot.title = 'Error: archivo local';
+    banner.className = 'banner err';
+    banner.textContent = '\u26A0\uFE0F Abre desde GitHub Pages (HTTPS), no como archivo local. La API no funciona desde file://';
+    return;
+  }
+
+  // Test API with minimal request
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 5,
+      messages: [{role:'user', content:'Say OK'}]
+    })
+  }).then(function(r) {
+    if (r.ok) {
+      dot.className = 'status-dot ok';
+      dot.title = 'Conectado';
+      banner.className = 'banner';
+      banner.textContent = '';
+      console.log('[HLV] API conectada OK');
+    } else if (r.status === 401) {
+      dot.className = 'status-dot err';
+      dot.title = 'Key inválida';
+      banner.className = 'banner err';
+      banner.textContent = '\u26A0\uFE0F API Key inválida o revocada. Ve a \u2699\uFE0F Configuración para cambiarla.';
+      console.error('[HLV] API 401 - key inválida');
+    } else {
+      dot.className = 'status-dot err';
+      dot.title = 'Error API: ' + r.status;
+      banner.className = 'banner err';
+      banner.textContent = '\u26A0\uFE0F Error API (HTTP ' + r.status + '). Revisa tu conexión.';
+      console.error('[HLV] API error: ' + r.status);
+    }
+  }).catch(function(err) {
+    dot.className = 'status-dot err';
+    dot.title = 'Sin conexión';
+    banner.className = 'banner err';
+    if (window.location.protocol === 'file:') {
+      banner.textContent = '\u26A0\uFE0F No funciona como archivo local. Sube a GitHub Pages.';
+    } else {
+      banner.textContent = '\u26A0\uFE0F Sin conexión a internet o CORS bloqueado.';
+    }
+    console.error('[HLV] Connection error:', err);
+  });
+}
+
+// ── Stars ──
+function generateStars() {
+  var container = getEl('bgs');
+  if (!container) return;
+  for (var i = 0; i < 55; i++) {
+    var star = document.createElement('div');
+    star.className = 'star';
+    var size = Math.random() > 0.7 ? '1.5px' : '1px';
+    star.style.cssText = 'left:' + (Math.random()*100) + '%;top:' + (Math.random()*70) + '%;--dur:' + (3+Math.random()*5) + 's;--del:' + (Math.random()*5) + 's;width:' + size + ';height:' + size;
+    container.appendChild(star);
+  }
+}
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('[HLV] Traductor v5.0 iniciando...');
+  console.log('[HLV] Protocolo:', window.location.protocol);
+  console.log('[HLV] Es pantalla guest:', isGuest);
+  
+  generateStars();
+  initApiKey();
+
+  if (isGuest) {
+    document.body.classList.add('gs');
+    buildIdleFlags();
+    showScreen('s-main');
+    showIdle();
+    startGuestPolling();
+    console.log('[HLV] Modo GUEST activo');
+    return;
+  }
+
+  buildLangBar();
+  setupInputEvents();
+
+  if (apiKey) {
+    showScreen('s-main');
+    updateUI();
+    // Test connection after 500ms to not block rendering
+    setTimeout(testConnection, 500);
+  } else {
+    showScreen('s-setup');
+  }
+});
+
+// ── Input events (separate from inline for reliability) ──
+function setupInputEvents() {
+  var input = getEl('iF');
+  var sendBtn = getEl('bS');
+  if (!input || !sendBtn) return;
+  
+  input.addEventListener('input', function() {
+    sendBtn.disabled = !input.value.trim();
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+}
+
+// ── API Key management ──
+function saveKey() {
+  var k = getEl('akIn').value.trim();
+  if (!k || k.length < 10) {
+    getEl('sErr').textContent = '\u274C Key inválida';
+    getEl('sErr').classList.add('show');
+    return;
+  }
+  apiKey = k;
+  try {
+    localStorage.setItem('hlv_k', k);
+    localStorage.setItem('hlv_v', APP_VERSION);
+  } catch(e) {}
+  showScreen('s-main');
+  buildLangBar();
+  setupInputEvents();
+  updateUI();
+  setTimeout(testConnection, 300);
+  toast('\u2705 Activado');
+}
+
+function openSettings() {
+  getEl('sK').value = apiKey;
+  getEl('sModal').classList.add('on');
+}
+function closeSettings() {
+  getEl('sModal').classList.remove('on');
+}
+function updateKey() {
+  var k = getEl('sK').value.trim();
+  if (!k || k.length < 10) { toast('\u274C Key inválida'); return; }
+  apiKey = k;
+  try {
+    localStorage.setItem('hlv_k', k);
+    localStorage.setItem('hlv_v', APP_VERSION);
+  } catch(e) {}
+  closeSettings();
+  toast('\u2705 Key actualizada');
+  setTimeout(testConnection, 300);
+}
+function clearAll() {
+  if (!confirm('\u00BFBorrar todos los datos y reiniciar?')) return;
+  try {
+    localStorage.removeItem('hlv_k');
+    localStorage.removeItem('hlv_v');
+    localStorage.removeItem('hlv_l');
+    localStorage.removeItem('hlv_ls');
+    localStorage.removeItem('hlv_latest');
+    // Legacy
+    localStorage.removeItem('hlv_apikey');
+    localStorage.removeItem('hlv_key');
+    localStorage.removeItem('hlv_guest_lang');
+    localStorage.removeItem('hlv_guest_lang_sync');
+  } catch(e) {}
+  window.location.reload();
+}
+
+// ── Language bar ──
+function buildLangBar() {
+  var bar = getEl('lBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  var saved = '';
+  try { saved = localStorage.getItem('hlv_l') || ''; } catch(e) {}
+  if (saved) {
+    for (var i = 0; i < LANGS.length; i++) {
+      if (LANGS[i].c === saved) { guestLang = LANGS[i]; break; }
+    }
+  }
+  for (var j = 0; j < LANGS.length; j++) {
+    (function(lang, idx) {
+      var btn = document.createElement('button');
+      btn.className = 'lbtn' + (lang.c === guestLang.c ? ' on' : '');
+      btn.textContent = lang.f + ' ' + lang.l;
+      btn.addEventListener('click', function() { pickLang(lang, btn); });
+      bar.appendChild(btn);
+    })(LANGS[j], j);
+  }
+}
+
+function pickLang(lang, btnEl) {
+  guestLang = lang;
+  try {
+    localStorage.setItem('hlv_l', lang.c);
+    localStorage.setItem('hlv_ls', JSON.stringify({c:lang.c, f:lang.f, l:lang.l, ts:Date.now()}));
+  } catch(e) {}
+  var btns = document.querySelectorAll('.lbtn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('on');
+  btnEl.classList.add('on');
+  updateUI();
+  toast(lang.f + ' ' + lang.l);
+}
+
+function buildIdleFlags() {
+  var container = getEl('gF');
+  if (!container) return;
+  for (var i = 0; i < LANGS.length; i++) {
+    var span = document.createElement('span');
+    span.className = 'gi-fl';
+    span.textContent = LANGS[i].f;
+    span.title = LANGS[i].l;
+    container.appendChild(span);
+  }
+}
+
+// ── Mode toggle ──
+function setMode(m) {
+  mode = m;
+  getEl('mR').className = 'modebtn' + (m === 'r' ? ' ar' : '');
+  getEl('mG').className = 'modebtn' + (m === 'g' ? ' ag' : '');
+  updateUI();
+}
+
+function updateUI() {
+  var langEl = getEl('hL');
+  if (langEl) langEl.textContent = guestLang.f + ' ' + guestLang.l;
+  
+  var whoEl = getEl('iW');
+  var inputEl = getEl('iF');
+  if (!whoEl || !inputEl) return;
+  
+  if (mode === 'r') {
+    whoEl.textContent = '\uD83C\uDFE8 Hablando en Español';
+    inputEl.placeholder = 'Escriba en español\u2026';
+  } else {
+    whoEl.textContent = '\uD83E\uDDF3 Hablando en ' + guestLang.l;
+    var ph = 'Type your message\u2026';
+    if (guestLang.c === 'ja') ph = '\u30E1\u30C3\u30BB\u30FC\u30B8\u3092\u5165\u529B...';
+    else if (guestLang.c === 'zh') ph = '\u8F93\u5165\u6D88\u606F...';
+    else if (guestLang.c === 'ko') ph = '\uBA54\uC2DC\uC9C0\uB97C \uC785\uB825\uD558\uC138\uC694...';
+    inputEl.placeholder = ph;
+  }
+}
+
+// ── Send & Translate ──
+function sendMessage() {
+  var inputEl = getEl('iF');
+  var text = inputEl.value.trim();
+  if (!text || !apiKey) return;
+  inputEl.value = '';
+  getEl('bS').disabled = true;
+
+  var fromName = mode === 'r' ? 'Spanish (Chile)' : guestLang.l;
+  var toName = mode === 'r' ? guestLang.l : 'Spanish (Chile)';
+  var toSpeech = mode === 'r' ? guestLang.s : 'es-CL';
+
+  addChatBubble(text, null, mode);
+  getEl('tI').classList.add('on');
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: 'You are a professional translator for Hotel Las Vicuñas in Putre, Chilean Altiplano (3,500m). Translate naturally and conversationally. Use appropriate hotel/tourism terms. Return ONLY the translated text, nothing else.',
+      messages: [{role: 'user', content: 'Translate from ' + fromName + ' to ' + toName + ':\n\n' + text}]
+    })
+  }).then(function(response) {
+    if (!response.ok) {
+      console.error('[HLV] API HTTP ' + response.status);
+      if (response.status === 401) {
+        toast('\u274C API Key inválida o revocada. Cambia en \u2699\uFE0F', 5000);
+        // Update status dot
+        getEl('statusDot').className = 'status-dot err';
+      } else if (response.status === 429) {
+        toast('\u274C Límite de uso API. Espera un momento.', 3000);
+      } else if (response.status === 529) {
+        toast('\u274C API sobrecargada. Reintenta.', 3000);
+      } else {
+        toast('\u274C Error API: HTTP ' + response.status, 3000);
+      }
+      updateBubbleTranslation('Error - revisa configuración');
+      getEl('tI').classList.remove('on');
+      return;
+    }
+    return response.json();
+  }).then(function(data) {
+    if (!data) return; // error already handled above
+    if (data.error) {
+      toast('\u274C ' + (data.error.message || 'Error API'), 4000);
+      updateBubbleTranslation('Error');
+      getEl('tI').classList.remove('on');
+      return;
+    }
+    var translated = (data.content && data.content[0] && data.content[0].text) || '[Error]';
+    updateBubbleTranslation(translated);
+    showSpotlight(translated, toName, toSpeech);
+    speak(translated, toSpeech);
+
+    lastTranslation = {text: translated, lang: toSpeech, label: toName, original: text, ts: Date.now()};
+    try { localStorage.setItem('hlv_latest', JSON.stringify(lastTranslation)); } catch(e) {}
+
+    // Mark connection as OK
+    getEl('statusDot').className = 'status-dot ok';
+    getEl('statusDot').title = 'Conectado';
+    var b = getEl('banner');
+    b.className = 'banner';
+    b.textContent = '';
+
+    getEl('tI').classList.remove('on');
+  }).catch(function(err) {
+    console.error('[HLV] Fetch error:', err);
+    getEl('tI').classList.remove('on');
+    updateBubbleTranslation('Error de conexión');
+    
+    if (window.location.protocol === 'file:') {
+      toast('\u274C No funciona como archivo local. Sube a GitHub Pages (HTTPS)', 6000);
+    } else {
+      toast('\u274C Sin conexión a internet', 3000);
+    }
+    getEl('statusDot').className = 'status-dot err';
+  });
+}
+
+// ── Spotlight ──
+function showSpotlight(text, langName, speechCode) {
+  getEl('sE').style.display = 'none';
+  getEl('sC').style.display = '';
+  getEl('sL').textContent = '\u2192 ' + langName;
+  getEl('sT').textContent = text;
+  lastTranslation.text = text;
+  lastTranslation.lang = speechCode;
+}
+
+function replay() {
+  if (lastTranslation.text) speak(lastTranslation.text, lastTranslation.lang);
+}
+
+// FIX BUG #4: clipboard fallback
+function copyTranslation() {
+  if (!lastTranslation.text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lastTranslation.text).then(function() {
+      toast('\uD83D\uDCCB Copiado');
+    }).catch(function() {
+      fallbackCopy(lastTranslation.text);
+    });
+  } else {
+    fallbackCopy(lastTranslation.text);
+  }
+}
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast('\uD83D\uDCCB Copiado'); }
+  catch(e) { toast('No se pudo copiar'); }
+  document.body.removeChild(ta);
+}
+
+// ── Chat bubbles ──
+function addChatBubble(original, translated, from) {
+  getEl('cE').style.display = 'none';
+  var div = document.createElement('div');
+  div.className = 'msg';
+  var cls = from === 'r' ? 'r' : 'g';
+  var label = from === 'r' ? '\uD83C\uDFE8 Recepción' : '\uD83E\uDDF3 ' + guestLang.l;
+  var transHtml = translated
+    ? '<div class="msgtrans">' + escapeHtml(translated) + '</div>'
+    : '<div class="msgtrans" data-pending>Traduciendo\u2026</div>';
+  div.innerHTML = '<div class="msgfrom ' + cls + '">' + label + '</div><div class="msgbub ' + cls + '"><div class="msgorig">' + escapeHtml(original) + '</div>' + transHtml + '</div>';
+  getEl('cA').appendChild(div);
+  scrollChat();
+}
+
+function updateBubbleTranslation(text) {
+  var pending = getEl('cA').querySelector('[data-pending]');
+  if (pending) {
+    pending.removeAttribute('data-pending');
+    pending.textContent = text;
+  }
+}
+
+// ── Speech synthesis ──
+function speak(text, langCode) {
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    var utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = langCode;
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    var voices = window.speechSynthesis.getVoices();
+    var langPrefix = langCode.split('-')[0];
+    for (var i = 0; i < voices.length; i++) {
+      if (voices[i].lang.indexOf(langPrefix) === 0) {
+        utterance.voice = voices[i];
+        break;
+      }
+    }
+    window.speechSynthesis.speak(utterance);
+  } catch(e) {
+    console.warn('[HLV] Speech error:', e);
+  }
+}
+
+// ── Speech recognition (microphone) ──
+function toggleMic() {
+  if (isListening) { stopMic(); return; }
+  
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast('Tu navegador no soporta micrófono. Usa Chrome.', 3000);
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = mode === 'r' ? 'es-CL' : guestLang.s;
+  recognition.continuous = false;
+  recognition.interimResults = true;
+
+  recognition.onstart = function() {
+    isListening = true;
+    getEl('bM').classList.add('rec');
+    getEl('bM').innerHTML = '\u23F9';
+    getEl('wB').classList.add('on');
+    getEl('wL').classList.add('on');
+  };
+
+  recognition.onresult = function(event) {
+    var interim = '', final = '';
+    for (var i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    getEl('iF').value = final || interim;
+    getEl('bS').disabled = !getEl('iF').value.trim();
+    if (final) {
+      stopMic();
+      sendMessage();
+    }
+  };
+
+  recognition.onerror = function(event) {
+    stopMic();
+    if (event.error !== 'no-speech' && event.error !== 'aborted') {
+      toast('Error micrófono: ' + event.error, 2000);
+    }
+  };
+
+  recognition.onend = function() {
+    if (isListening) stopMic();
+  };
+
+  try {
+    recognition.start();
+  } catch(e) {
+    toast('Error al iniciar micrófono', 2000);
+  }
+}
+
+function stopMic() {
+  isListening = false;
+  getEl('bM').classList.remove('rec');
+  getEl('bM').innerHTML = '\uD83C\uDFA4';
+  getEl('wB').classList.remove('on');
+  getEl('wL').classList.remove('on');
+  if (recognition) {
+    try { recognition.stop(); } catch(e) {}
+    recognition = null;
+  }
+}
+
+// ── Guest screen polling (via localStorage) ──
+function startGuestPolling() {
+  var lastTimestamp = 0;
+
+  // Poll for new translations every 500ms
+  setInterval(function() {
+    var raw = '';
+    try { raw = localStorage.getItem('hlv_latest'); } catch(e) { return; }
+    if (!raw) return;
+    
+    try {
+      var data = JSON.parse(raw);
+      if (data.ts && data.ts > lastTimestamp) {
+        lastTimestamp = data.ts;
+        hideIdle();
+        getEl('sE').style.display = 'none';
+        getEl('sC').style.display = '';
+        getEl('sL').textContent = '\u2192 ' + (data.label || '');
+        getEl('sT').textContent = data.text || '';
+        lastTranslation = {text: data.text, lang: data.lang};
+        speak(data.text, data.lang);
+      }
+    } catch(e) {}
+
+    // Check for language change from reception screen
+    var langSync = '';
+    try { langSync = localStorage.getItem('hlv_ls'); } catch(e) {}
+    if (langSync) {
+      try {
+        var ld = JSON.parse(langSync);
+        var langEl = getEl('hL');
+        if (langEl) langEl.textContent = ld.f + ' ' + ld.l;
+      } catch(e) {}
+    }
+  }, 500);
+
+  // Auto-return to idle after 60 seconds without new translation
+  setInterval(function() {
+    var raw = '';
+    try { raw = localStorage.getItem('hlv_latest'); } catch(e) { return; }
+    if (!raw) return;
+    try {
+      var data = JSON.parse(raw);
+      if (Date.now() - data.ts > 60000) {
+        showIdle();
+      }
+    } catch(e) {}
+  }, 5000);
+}
+
+function showIdle() {
+  getEl('gI').classList.add('on');
+  getEl('spot').style.display = 'none';
+}
+function hideIdle() {
+  getEl('gI').classList.remove('on');
+  getEl('spot').style.display = '';
+}
+
+// ── Voices init ──
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = function() {
+      window.speechSynthesis.getVoices();
+    };
+  }
+}
+</script>
+</body>
+</html>
